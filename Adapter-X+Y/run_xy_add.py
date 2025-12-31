@@ -1,4 +1,5 @@
 import argparse
+import os
 import torch
 from experiments.exp_online_xy_add import Exp_Decom
 import random
@@ -179,9 +180,14 @@ if __name__ == '__main__':
             exp = Exp(args)  # set experiments
 
      
-            # ### ------------- 训练网络 --------------------
-            print('\n>>>>>>> start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
-            exp.train(setting)
+            # Check if model already exists
+            checkpoint_path = os.path.join(args.checkpoints, setting, 'checkpoint.pth')
+            if os.path.exists(checkpoint_path):
+                print(f'\n>>>>>>> Model already exists, skipping training : {setting} >>>>>>>>>>>>>>>>>>>>>>>>>>')
+            else:
+                # ### ------------- 训练网络 --------------------
+                print('\n>>>>>>> start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
+                exp.train(setting)
 
             print('\n>>>>>>> just testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
             exp.test(setting, test=1)

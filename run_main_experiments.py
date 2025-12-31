@@ -115,24 +115,29 @@ def run_experiment():
                 else:
                     result_entry["Improvement_MSE(%"] = "N/A"
 
+                # Save to CSV (Incremental)
+                csv_file = os.path.join(root_dir, "main_experiment_results.csv")
+                file_exists = os.path.isfile(csv_file)
+                
+                fieldnames = ["Dataset", "Model", "Delta", "Baseline_MSE", "Baseline_MAE", "Ada_MSE", "Ada_MAE", "Improvement_MSE(%"]
+                
+                try:
+                     with open(csv_file, mode='a' if file_exists else 'w', newline='') as f:
+                        writer = csv.DictWriter(f, fieldnames=fieldnames)
+                        if not file_exists:
+                            writer.writeheader()
+                        writer.writerow(result_entry)
+                     print(f"Results saved to {csv_file}")
+                except Exception as e:
+                     print(f"Error saving to CSV: {e}")
+
                 results.append(result_entry)
                 
             except Exception as e:
                 print(f"An error occurred: {e}")
                 
-    # Save to CSV
-    csv_file = os.path.join(root_dir, "main_experiment_results.csv")
     print("\n=====================================================")
-    print(f"Saving results to {csv_file}")
-    
-    fieldnames = ["Dataset", "Model", "Delta", "Baseline_MSE", "Baseline_MAE", "Ada_MSE", "Ada_MAE", "Improvement_MSE(%"]
-    
-    with open(csv_file, mode='w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(results)
-        
-    print("Done.")
+    print("Experiment finished.")
 
 if __name__ == "__main__":
     run_experiment()
