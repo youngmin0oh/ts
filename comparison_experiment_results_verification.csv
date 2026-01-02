@@ -1,0 +1,4 @@
+Dataset,Model,Delta,Baseline_MSE,Baseline_MAE,Add_MSE,Add_MAE,Imp_Add(%),Mul_MSE,Mul_MAE,Imp_Mul(%),Affine_MSE,Affine_MAE,Imp_Affine(%),Affine-Norm_MSE,Affine-Norm_MAE,Imp_Affine-Norm(%)
+ETTh2,iTransformer,0.01,0.191362,0.299239,0.1899,0.2978,0.76%,0.19,0.2983,0.71%,0.192,0.3027,-0.33%,0.1898,0.3026,0.82%
+ETTh2,iTransformer,0.01,0.191362,0.299239,N/A,N/A,N/A,N/A,N/A,N/A,0.1919,0.3026,-0.28%,0.1898,0.3026,0.82%
+ETTm1,iTransformer,0.01,0.375998,0.408549,N/A,N/A,N/A,N/A,N/A,N/A,0.372,0.406,1.06%,0.3729,0.4067,0.82%

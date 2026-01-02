@@ -15,12 +15,14 @@ warnings.filterwarnings('ignore')
 import torch.nn.functional as F
 
 class PostProcessingNet(torch.nn.Module):
-    def __init__(self, state_dim, hidden_dim, action_dim, delta=0.1, mode='add'):
+    def __init__(self, state_dim, hidden_dim, action_dim, seq_len, enc_in, delta=0.1, mode='add'):
         super(PostProcessingNet, self).__init__()
         self.mode = mode
         self.delta = delta
+        self.seq_len = seq_len
+        self.enc_in = enc_in
         
-        print(f'PostProcessingNet initialized with mode: {mode}, delta: {delta} (Norm Enabled)')
+        print(f'PostProcessingNet initialized with mode: {mode}, delta: {delta} (Norm Enabled: Per-Channel)')
 
         if mode in ['add', 'mul']:
             # MLP structure for 'add' and 'mul' (Non-linear)
@@ -29,16 +31,19 @@ class PostProcessingNet(torch.nn.Module):
             self.fc2 = torch.nn.Linear(hidden_dim, hidden_dim)
             self.bn2 = torch.nn.InstanceNorm1d(hidden_dim)
             self.fc3 = torch.nn.Linear(hidden_dim, action_dim)
-        elif mode == 'affine':
+        elif self.mode == 'affine':
             # Linear structure for 'affine' (Rotation/Linear Mixing)
             # y = (I + dA)x + db
-            # Added LayerNorm for input normalization
-            self.norm = nn.LayerNorm(state_dim)
+            # Changed to Per-Channel InstanceNorm (RevIN styled)
+            self.norm = nn.InstanceNorm1d(enc_in, affine=True)
             self.linear = torch.nn.Linear(state_dim, action_dim)
             # Initialize to ZERO for stability (start as identity transformation)
-            # This prevents random noise from degrading performance initially
             nn.init.zeros_(self.linear.weight)
             nn.init.constant_(self.linear.bias, 0)
+            
+            # Adaptive Norm: Learnable mixing parameter
+            # Initialize to 0.5 to start with a balance of Raw and Norm
+            self.alpha = nn.Parameter(torch.tensor(0.5))
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
@@ -61,11 +66,23 @@ class PostProcessingNet(torch.nn.Module):
                 return out
                 
         elif self.mode == 'affine':
-            # Affine mode: just linear projection
-            # No tanh to allow full linear transformation range, but scaled by delta for control
-            # Apply LayerNorm before linear layer
-            x = self.norm(x)
-            return self.linear(x) * self.delta
+            # Adaptive Norm: Mix Normalized and Raw features
+            # x_mixed = alpha * Norm(x) + (1-alpha) * x
+            
+            # 1. Reshape to (N, C, L) for InstanceNorm1d
+            # x is (N, L*C) -> View (N, L, C) -> Permute (N, C, L)
+            x_reshaped = x.view(x.shape[0], self.seq_len, self.enc_in).permute(0, 2, 1)
+            
+            # 2. Apply InstanceNorm (Per-Channel)
+            x_norm = self.norm(x_reshaped) 
+            
+            # 3. Flatten back to (N, L*C)
+            # (N, C, L) -> Permute (N, L, C) -> Flatten
+            x_norm = x_norm.permute(0, 2, 1).reshape(x.shape[0], -1)
+            
+            x_mixed = self.alpha * x_norm + (1 - self.alpha) * x
+            
+            return self.linear(x_mixed) * self.delta
 
 class Exp_Combined_Norm(Exp_Basic):
     def __init__(self, args, adapter_mode='add'):
@@ -380,6 +397,7 @@ class Exp_Combined_Norm(Exp_Basic):
         post_net_x = PostProcessingNet(self.args.seq_len * self.args.enc_in, 
                                          self.args.d_model, 
                                          self.args.seq_len * self.args.enc_in,
+                                         self.args.seq_len, self.args.enc_in,
                                          self.args.delta,
                                          mode=self.adapter_mode).to(self.device)
         self.post_optim_x = torch.optim.Adam(post_net_x.parameters(), lr=self.args.post_train_lr)
@@ -387,6 +405,7 @@ class Exp_Combined_Norm(Exp_Basic):
         post_net_y = PostProcessingNet(self.args.seq_len * self.args.enc_in, 
                                          self.args.d_model, 
                                          self.args.pred_len * self.args.enc_in,
+                                         self.args.seq_len, self.args.enc_in,
                                          self.args.delta,
                                          mode=self.adapter_mode).to(self.device)
         self.post_optim_y = torch.optim.Adam(post_net_y.parameters(), lr=self.args.post_train_lr)
@@ -482,6 +501,7 @@ class Exp_Combined_Norm(Exp_Basic):
             post_net_x = PostProcessingNet(self.args.seq_len * self.args.enc_in, 
                                          self.args.d_model, 
                                          self.args.seq_len * self.args.enc_in,
+                                            self.args.seq_len, self.args.enc_in,
                                             self.args.delta,
                                             mode=self.adapter_mode
                                          ).to(self.device)
@@ -490,6 +510,7 @@ class Exp_Combined_Norm(Exp_Basic):
             post_net_y = PostProcessingNet(self.args.seq_len * self.args.enc_in, 
                                          self.args.d_model, 
                                          self.args.pred_len * self.args.enc_in,
+                                            self.args.seq_len, self.args.enc_in,
                                             self.args.delta,
                                             mode=self.adapter_mode
                                          ).to(self.device)
