@@ -1,3 +1,23 @@
+
+# Python
 *.pyc
 __pycache__/
 *.log
+
+# Checkpoints and Models
+checkpoints/
+results/
+test_results/
+*.pth
+*.pt
+Adapter-X+Y/AdaCali/checkpoints/
+
+# Datasets
+datasets/
+
+# IDE
+.vscode/
+.idea/
+
+# System
+.DS_Store
