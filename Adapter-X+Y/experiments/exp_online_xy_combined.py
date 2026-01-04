@@ -13,6 +13,7 @@ import numpy as np
 
 warnings.filterwarnings('ignore')
 import torch.nn.functional as F
+from utils.losses import crps_ensemble
 
 class PostProcessingNet(torch.nn.Module):
     def __init__(self, state_dim, hidden_dim, action_dim, delta=0.1, mode='add'):
@@ -87,6 +88,8 @@ class Exp_Combined(Exp_Basic):
         return model_optim
 
     def _select_criterion(self):
+        if self.args.model == 'DistPred':
+            return crps_ensemble
         criterion = nn.MSELoss()
         return criterion
     
@@ -114,6 +117,10 @@ class Exp_Combined(Exp_Basic):
             outputs = self.model(batch_x, batch_x_mark, batch_y_mark, batch_y)
         elif "Lade" in self.args.model or "Four" in self.args.model:
             outputs = self.model(batch_x)
+        elif self.args.model == 'DistPred':
+            dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
+            dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
         else:
             if len(batch_x.shape)<3:
                 batch_x = batch_x.unsqueeze(0)
@@ -150,7 +157,12 @@ class Exp_Combined(Exp_Basic):
                 pred = outputs.detach().cpu()
                 true = batch_y.detach().cpu()
 
-                loss = criterion(pred, true)
+                if self.args.model == 'DistPred':
+                    # DistPred: outputs [B, V, T, Bins], true [B, T, V]
+                    # CRPS Expects: obs [B, V, T], forecast [B, V, T, Bins]
+                    loss = criterion(true.permute(0, 2, 1), pred)
+                else:
+                    loss = criterion(pred, true)
 
                 total_loss.append(loss)
         total_loss = np.average(total_loss)
@@ -194,7 +206,10 @@ class Exp_Combined(Exp_Basic):
 
 
                 outputs, batch_y = self._get_preds(batch_x, batch_y, batch_x_mark, batch_y_mark, i)
-                loss = criterion(outputs, batch_y)
+                if self.args.model == 'DistPred':
+                    loss = criterion(batch_y.transpose(1, 2), outputs)
+                else:
+                    loss = criterion(outputs, batch_y)
                 train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
@@ -277,6 +292,11 @@ class Exp_Combined(Exp_Basic):
             pred = outputs
             true = batch_y
 
+            if self.args.model == 'DistPred':
+                # For metrics, use mean of distribution
+                # output: [B, V, T, Bins] -> Mean -> [B, V, T] -> Transpose -> [B, T, V]
+                pred = np.mean(pred, axis=-1).transpose(0, 2, 1)
+
             preds.append(pred)
             trues.append(true)
 
@@ -340,6 +360,10 @@ class Exp_Combined(Exp_Basic):
                 
                 outputs, batch_y = self._get_preds(batch_x, batch_y, batch_x_mark, batch_y_mark, i)
                 
+                if self.args.model == 'DistPred':
+                     # [B, V, T, Bins] -> Mean -> [B, V, T] -> Transpose -> [B, T, V]
+                    outputs = outputs.mean(dim=-1).transpose(1, 2)
+
                 # Apply Adapter Y
                 y_state = outputs.reshape(outputs.shape[0],-1)
                 infos_y = post_net_y(y_state)
@@ -424,6 +448,10 @@ class Exp_Combined(Exp_Basic):
                     
                     outputs, batch_y = self._get_preds(batch_x, batch_y, batch_x_mark, batch_y_mark, episode)
                     
+                    if self.args.model == 'DistPred':
+                         # [B, V, T, Bins] -> Mean -> [B, V, T] -> Transpose -> [B, T, V]
+                        outputs = outputs.mean(dim=-1).transpose(1, 2)
+
                     # Adapter Y Forward
                     y_state = outputs.reshape(outputs.shape[0],-1)
                     infos_y = post_net_y(y_state) 

@@ -15,7 +15,7 @@ def run_comparison_experiments():
     
     # Datasets and Models
     datasets = ["ELC", "Exchange", "Traffic", "Weather", "Illness", "Solar", "ETTh1", "ETTh2", "ETTm1", "ETTm2"]
-    models = ["iTransformer", "Autoformer", "FreTS", "FourierGNN"]
+    models = ["iTransformer", "Autoformer", "FreTS", "FourierGNN", "DistPred"]
     
     # Parameters
     delta = 0.01

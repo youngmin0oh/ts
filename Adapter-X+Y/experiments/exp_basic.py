@@ -1,7 +1,7 @@
 import os
 import torch
 from model import Reformer, Flowformer, Flashformer, \
-    iTransformer, DeepBooTS, Transformer
+    iTransformer, DeepBooTS, Transformer, DistPred
     
 from models_offline import Autoformer, Informer, PatchTST, FEDformer, \
       Mvstgn, DLinear, Periodformer, PSLD, FreTS, FourierGNN, LadeV2, DeepBooTS_V2
@@ -26,6 +26,7 @@ class Exp_Basic(object):
             'DeepBooTS':DeepBooTS,
             'LadeV2':LadeV2,
             'DeepBooTS_V2':DeepBooTS_V2,
+            'DistPred': DistPred,
         }
         self.device = self._acquire_device()
         self.model = self._build_model().to(self.device)

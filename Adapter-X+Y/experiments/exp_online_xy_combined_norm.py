@@ -142,6 +142,14 @@ class Exp_Combined_Norm(Exp_Basic):
             dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
             dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
             outputs = self.model(batch_x, dec_inp)
+        elif self.args.model == 'DistPred':
+            dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
+            dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+            # [B, V, T, Bins]
+            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+            # Take mean for adapter compatibility (MSE optimization)
+            # [B, V, T, Bins] -> Mean -> [B, V, T] -> Transpose -> [B, T, V]
+            outputs = outputs.mean(dim=-1).transpose(1, 2)
         elif 'rnn' in self.args.model:
             if len(batch_x.shape)<3:
                 batch_x = batch_x.unsqueeze(0)
