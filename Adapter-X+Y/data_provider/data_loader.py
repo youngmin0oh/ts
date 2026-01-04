@@ -226,6 +226,23 @@ class Dataset_Custom(Dataset):
         '''
         df_raw.columns: ['date', ...(other features), target feature]
         '''
+        # specific for weather dataset or other variations
+        for col in df_raw.columns:
+            if col.lower() == 'date':
+                df_raw.rename(columns={col: 'date'}, inplace=True)
+                break
+                
+        if self.target not in df_raw.columns or 'date' not in df_raw.columns:
+            df_raw = pd.read_csv(os.path.join(self.root_path, self.data_path), header=None)
+            df_raw['date'] = pd.date_range(start='2010-01-01', periods=len(df_raw), freq=self.freq)
+            cols = list(df_raw.columns)
+            cols.remove('date')
+            df_raw.rename(columns={cols[-1]: self.target}, inplace=True)
+
+        # Preprocessing: replace -9999 with NaN and interpolate
+        df_raw = df_raw.replace(-9999, np.nan)
+        df_raw = df_raw.interpolate(method='linear', limit_direction='both').fillna(method='ffill').fillna(method='bfill')
+
         cols = list(df_raw.columns)
         cols.remove(self.target)
         cols.remove('date')
