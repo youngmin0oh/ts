@@ -183,7 +183,7 @@ if __name__ == '__main__':
     if args.is_training:
         for ii in range(args.itr):
             # setting record of experiments
-            setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+            setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}_ep{}'.format(
                 args.model_id,
                 args.model,
                 args.data,
@@ -200,7 +200,7 @@ if __name__ == '__main__':
                 args.embed,
                 args.distil,
                 args.des,
-                args.class_strategy, ii)
+                args.class_strategy, ii, args.train_epochs)
             
             # Initialize Experiment
             # We set adapter_mode to default 'add' initially, but it will be overridden per loop
@@ -241,7 +241,7 @@ if __name__ == '__main__':
     else:
         # Testing mode
         ii = 0
-        setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+        setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}_ep{}'.format(
              args.model_id,
             args.model,
             args.data,
@@ -258,7 +258,7 @@ if __name__ == '__main__':
             args.embed,
             args.distil,
             args.des,
-            args.class_strategy, ii)
+            args.class_strategy, ii, args.train_epochs)
 
         exp = Exp_Combined(args, adapter_mode='add') # Default
         print('\n>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
