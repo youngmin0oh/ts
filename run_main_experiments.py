@@ -16,7 +16,7 @@ def run_experiment():
     models = ["iTransformer" , "Autoformer", "FreTS", "FourierGNN"]
     
     # Parameters
-    delta = 0.01
+    delta = 0.1
     seq_len = 96
     pred_len = 96
     train_epochs = 1

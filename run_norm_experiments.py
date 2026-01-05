@@ -14,13 +14,14 @@ def run_comparison_experiments():
     script_norm = "Adapter-X+Y/run_xy_combined_norm.py"
     
     # Datasets and Models
-    datasets = ["ELC", "Exchange", "Traffic", "Weather", "Illness", "Solar", "ETTh1", "ETTh2", "ETTm1", "ETTm2"]
+    datasets = ["ETTh1", "ETTh2", "ETTm1", "ETTm2", "ELC", "Exchange", "Traffic", "Weather", "Illness", "Solar", ]
     models = ["iTransformer", "Autoformer", "FreTS", "FourierGNN", "DistPred"]
     
     # Parameters
-    delta = 0.01
+    delta = 0.1
     seq_lens = [96, 192, 336, 720]
     train_epochs = 10
+    adapter_target = "xy"
     
     print("Starting Comparison Experiments: Add vs Mul vs Affine vs Affine-Norm")
     print("====================================================================")
@@ -34,6 +35,8 @@ def run_comparison_experiments():
         csv_file = os.path.join(root_dir, f"comparison_experiment_results_seqlen_{seq_len}.csv")
     
         for dataset in datasets:
+            # Special handling removed to match run_xy_add.py
+            delta = 0.1 
             for model in models:
                 print(f"----------------------------------------------------------------")
                 print(f"Dataset={dataset}, Model={model}, Delta={delta}, SeqLen={seq_len}")
@@ -66,14 +69,15 @@ def run_comparison_experiments():
                     "--pred_len", str(pred_len),
                     "--e_layers", "2",
                     "--d_layers", "1",
-                    "--factor", "3",
-                    "--des", "Exp",
+                    "--factor", "1",
+                    "--des", "test",
                     "--itr", "1",
                     "--delta", str(delta),
                     "--learning_rate", "0.0001",
                     "--train_epochs", str(train_epochs),
                     "--batch_size", "32",
                     "--adapter_mode", "all", # Run all standard modes
+                    "--adapter_target", adapter_target,
                     "--checkpoints", "Adapter-X+Y/AdaCali/checkpoints/",
                     "--gpu", "0"
                 ]
@@ -144,14 +148,15 @@ def run_comparison_experiments():
                         "--pred_len", str(pred_len),
                         "--e_layers", "2",
                         "--d_layers", "1",
-                        "--factor", "3",
-                        "--des", "Exp",
+                        "--factor", "1",
+                        "--des", "test",
                         "--itr", "1",
                         "--delta", str(delta),
                         "--learning_rate", "0.0001",
                         "--train_epochs", str(train_epochs),
                         "--batch_size", "32",
                         "--adapter_mode", mode_arg, 
+                        "--adapter_target", adapter_target,
                         "--checkpoints", "Adapter-X+Y/AdaCali/checkpoints/",
                         "--gpu", "0"
                     ]

@@ -91,14 +91,9 @@ class PostProcessingNet(torch.nn.Module):
             x_mixed = self.alpha * x_norm + (1 - self.alpha) * x
             
             if self.mode == 'affine':
-                return self.linear(x_mixed) * self.delta
+                return torch.tanh(self.linear(x_mixed)) * self.delta
             else:
-                 # Norm mode: Just return the mixed output scaled by delta (acting as offset/residual)
-                 # Note: To be additive compatible, we might treat this as an offset?
-                 # Wait, if we return x_mixed * delta, and it is added to X, then:
-                 # X_new = X + delta * (alpha*Norm(X) + (1-alpha)*X)
-                 # This seems correct for an "additive" adapter structure.
-                 return x_mixed * self.delta
+                 return torch.tanh(x_mixed) * self.delta
 
 class Exp_Combined_Norm(Exp_Basic):
     def __init__(self, args, adapter_mode='add'):
@@ -355,7 +350,7 @@ class Exp_Combined_Norm(Exp_Basic):
         return
 
 
-    def vali_post(self, post_net_x, post_net_y, vali_loader, criterion):
+    def vali_post(self, post_net_x, post_net_y, vali_loader, criterion, adapter_target='xy'):
         total_loss = []
         mae_loss = []
         self.model.eval()
@@ -376,24 +371,26 @@ class Exp_Combined_Norm(Exp_Basic):
                 x_state = batch_x.view(batch_x.shape[0],-1)
                 
                 # Apply Adapter X
-                infos_x = post_net_x(x_state)
-                infos_x = infos_x.view(*batch_x.shape)
-                if self.adapter_mode in ['mul']:
-                    batch_x = batch_x * infos_x
-                else: # add, affine
-                    batch_x = batch_x + infos_x
+                if 'x' in adapter_target:
+                    infos_x = post_net_x(x_state)
+                    infos_x = infos_x.view(*batch_x.shape)
+                    if self.adapter_mode in ['mul']:
+                        batch_x = batch_x * infos_x
+                    else: # add, affine
+                        batch_x = batch_x + infos_x
                 
                 outputs, batch_y = self._get_preds(batch_x, batch_y, batch_x_mark, batch_y_mark, i)
                 
                 # Apply Adapter Y
-                y_state = outputs.reshape(outputs.shape[0],-1)
-                infos_y = post_net_y(y_state)
-                infos_y = infos_y.view(*outputs.shape)
-                
-                if self.adapter_mode in ['mul']:
-                    outputs = outputs * infos_y
-                else: # add, affine
-                    outputs = outputs + infos_y
+                if 'y' in adapter_target:
+                    y_state = outputs.reshape(outputs.shape[0],-1)
+                    infos_y = post_net_y(y_state)
+                    infos_y = infos_y.view(*outputs.shape)
+                    
+                    if self.adapter_mode in ['mul']:
+                        outputs = outputs * infos_y
+                    else: # add, affine
+                        outputs = outputs + infos_y
                 
                 pred = outputs.detach().cpu()
                 true = batch_y.detach().cpu()
@@ -409,12 +406,16 @@ class Exp_Combined_Norm(Exp_Basic):
         post_net_y.train()
         return total_loss, mae_loss
    
-    def post_train(self, setting, vali_set = False):
+    def post_train(self, setting, vali_set = False, adapter_target='xy'):
         
         print(f"load model ... (Mode: {self.adapter_mode}) - Norm Version")
         
         # Load the base model checkpoint
-        self.model.load_state_dict(torch.load(os.path.join(self.args.checkpoints + setting, 'checkpoint.pth')))
+        ckpt_path = os.path.join(self.args.checkpoints + setting, 'checkpoint.pth')
+        if os.path.exists(ckpt_path):
+            self.model.load_state_dict(torch.load(ckpt_path))
+        else:
+            print(f"Checkpoint not found at {ckpt_path}, using initialized model (Zero-Shot).")
         self.model.eval()
         
         # Create PostProcessingNets with the correct mode
@@ -426,7 +427,7 @@ class Exp_Combined_Norm(Exp_Basic):
                                          mode=self.adapter_mode).to(self.device)
         self.post_optim_x = torch.optim.Adam(post_net_x.parameters(), lr=self.args.post_train_lr)
         
-        post_net_y = PostProcessingNet(self.args.seq_len * self.args.enc_in, 
+        post_net_y = PostProcessingNet(self.args.pred_len * self.args.enc_in, 
                                          self.args.d_model, 
                                          self.args.pred_len * self.args.enc_in,
                                          self.args.seq_len, self.args.enc_in,
@@ -449,8 +450,10 @@ class Exp_Combined_Norm(Exp_Basic):
             with tqdm(total=len(data_loader), desc=f'Iteration {episode} ({self.adapter_mode})') as pbar:
                 for step, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(data_loader):
                     
-                    self.post_optim_x.zero_grad()
-                    self.post_optim_y.zero_grad()
+                    if 'x' in adapter_target:
+                        self.post_optim_x.zero_grad()
+                    if 'y' in adapter_target:
+                        self.post_optim_y.zero_grad()
                     batch_x = batch_x.float().to(self.device)
                     batch_y = batch_y.float().to(self.device)
                     batch_x_mark = batch_x_mark.float().to(self.device)
@@ -460,66 +463,78 @@ class Exp_Combined_Norm(Exp_Basic):
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                 
                     # Adapter X Forward
-                    x_state = batch_x.view(batch_x.shape[0],-1)
-                    infos_x = post_net_x(x_state)
-                    infos_x = infos_x.view(*batch_x.shape)
-                    
-                    if self.adapter_mode in ['mul']:
-                        batch_x = batch_x * infos_x
-                    else: # add, affine
-                        batch_x = batch_x + infos_x
+                    if 'x' in adapter_target:
+                        x_state = batch_x.view(batch_x.shape[0],-1)
+                        infos_x = post_net_x(x_state)
+                        infos_x = infos_x.view(*batch_x.shape)
+                        
+                        if self.adapter_mode in ['mul']:
+                            batch_x = batch_x * infos_x
+                        else: # add, affine
+                            batch_x = batch_x + infos_x
                     
                     outputs, batch_y = self._get_preds(batch_x, batch_y, batch_x_mark, batch_y_mark, episode)
                     
+                    # Optimization: Detach model output if strictly training Adapter-Y
+                    if adapter_target == 'y' and self.args.model in ['Sundial', 'TTM']:
+                        outputs = outputs.detach()
+
                     # Adapter Y Forward
-                    y_state = outputs.reshape(outputs.shape[0],-1)
-                    infos_y = post_net_y(y_state) 
-                    infos_y = infos_y.view(*outputs.shape)
-                    
-                    if self.adapter_mode in ['mul']:
-                        outputs = outputs * infos_y
-                    else: # add, affine
-                        outputs = outputs + infos_y
+                    if 'y' in adapter_target:
+                        y_state = outputs.reshape(outputs.shape[0],-1)
+                        infos_y = post_net_y(y_state) 
+                        infos_y = infos_y.view(*outputs.shape)
+                        
+                        if self.adapter_mode in ['mul']:
+                            outputs = outputs * infos_y
+                        else: # add, affine
+                            outputs = outputs + infos_y
                     
                     loss = criterion(outputs, batch_y)
                     loss_list.append(loss.item())
                     loss.backward()
-                    self.post_optim_x.step()
-                    self.post_optim_y.step()
+                    if 'x' in adapter_target:
+                        self.post_optim_x.step()
+                    if 'y' in adapter_target:
+                        self.post_optim_y.step()
 
                     if (step+1) % 10 == 0:
                         pbar.set_postfix({'step': '%d' % (step+1), 'loss': '%.4f' % np.mean(loss_list)})
                     pbar.update(1)
             
             if not vali_set:
-                val_loss, mae_loss = self.vali_post(post_net_x, post_net_y, val_loader, criterion)
+                val_loss, mae_loss = self.vali_post(post_net_x, post_net_y, val_loader, criterion, adapter_target)
                 print('val_loss=%.4f' % val_loss, 'mae_loss=%.4f' % mae_loss)
                 
                 path = os.path.join(self.args.checkpoints, setting) 
                 # Save with mode suffix
-                suffix = f"_{self.adapter_mode}_norm"
+                suffix = f"_{self.adapter_mode}_norm_{adapter_target}"
                 early_stopping(val_loss, (post_net_x, post_net_y), path, name=f'post_ckpt_{vali_set}{suffix}.pth')
                 if early_stopping.early_stop:
                     print("Early stopping")
                     break
                     
-            test_loss, mae_loss = self.vali_post(post_net_x, post_net_y, test_loader, criterion)
+            test_loss, mae_loss = self.vali_post(post_net_x, post_net_y, test_loader, criterion, adapter_target)
             print('test_loss=%.4f' % test_loss, 'mae_loss=%.4f' % mae_loss)
             
             adjust_learning_rate_v2((self.post_optim_x, self.post_optim_y), episode + 1, self.args)
         
         return test_loss
 
-    def test2(self, setting, continue_train=False, post_process=False, vali_set=False, post_noise = False, online=False, visual_ts=False):
+    def test2(self, setting, continue_train=False, post_process=False, vali_set=False, post_noise = False, online=False, visual_ts=False, adapter_target='xy'):
         ''' Test with Post Processing enabled '''
         test_data, test_loader = self._get_data(flag='test')
         
         print('loading checkpoint.pth ...')
-        self.model.load_state_dict(torch.load(os.path.join(self.args.checkpoints + setting, 'checkpoint.pth')))
+        ckpt_path = os.path.join(self.args.checkpoints + setting, 'checkpoint.pth')
+        if os.path.exists(ckpt_path):
+            self.model.load_state_dict(torch.load(ckpt_path))
+        else:
+            print(f"Checkpoint not found at {ckpt_path}, using initialized model (Zero-Shot).")
         self.model.eval()
 
         if post_process:
-            suffix = f"_{self.adapter_mode}_norm"
+            suffix = f"_{self.adapter_mode}_norm_{adapter_target}"
             print(f'loading post_ckpt{suffix}.pth ...')
             
             post_net_x = PostProcessingNet(self.args.seq_len * self.args.enc_in, 
@@ -531,7 +546,7 @@ class Exp_Combined_Norm(Exp_Basic):
                                          ).to(self.device)
             post_net_x.load_state_dict(torch.load(os.path.join(self.args.checkpoints + setting, f'0_post_ckpt_{vali_set}{suffix}.pth')))
             
-            post_net_y = PostProcessingNet(self.args.seq_len * self.args.enc_in, 
+            post_net_y = PostProcessingNet(self.args.pred_len * self.args.enc_in, 
                                          self.args.d_model, 
                                          self.args.pred_len * self.args.enc_in,
                                             self.args.seq_len, self.args.enc_in,
@@ -541,7 +556,7 @@ class Exp_Combined_Norm(Exp_Basic):
             post_net_y.load_state_dict(torch.load(os.path.join(self.args.checkpoints + setting, f'1_post_ckpt_{vali_set}{suffix}.pth')))
         
         criterion = self._select_criterion() 
-        test_loss, mae_loss = self.vali_post(post_net_x, post_net_y, test_loader, criterion)
+        test_loss, mae_loss = self.vali_post(post_net_x, post_net_y, test_loader, criterion, adapter_target=adapter_target)
         print(f'[{self.adapter_mode}-Norm] final test_loss={test_loss:.4f}, mae_loss={mae_loss:.4f}') 
 
         return test_loss, mae_loss

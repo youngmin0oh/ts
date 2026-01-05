@@ -19,7 +19,9 @@ if __name__ == '__main__':
     parser.add_argument('--model', type=str, required=True, default='iTransformer', help='model name')
     
     # Adapter Mode argument
+    # Adapter Mode argument
     parser.add_argument('--adapter_mode', type=str, default='all', help='Adapter mode: [add, mul, affine, all]')
+    parser.add_argument('--adapter_target', type=str, default='xy', help='Adapter target: [x, y, xy]')
 
     # data loader
     parser.add_argument('--data', type=str, required=True, default='ETTh1.csv', help='dataset type')
@@ -211,8 +213,11 @@ if __name__ == '__main__':
             if os.path.exists(checkpoint_path):
                 print(f'\n>>>>>>> Model already exists, skipping training : {setting} >>>>>>>>>>>>>>>>>>>>>>>>>>')
             else:
-                print('\n>>>>>>> start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
-                exp.train(setting)
+                if args.train_epochs > 0:
+                    print('\n>>>>>>> start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
+                    exp.train(setting)
+                else:
+                    print('\n>>>>>>> Zero-shot / Foundation Model mode (skipping baseline training) : {} >>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
 
             print('\n>>>>>>> just testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
             exp.test(setting, test=1) # Baseline test
@@ -228,14 +233,14 @@ if __name__ == '__main__':
                 
                 # Post-Training (Train Adapter)
                 print(f'\n<<<<<<< postprocessing with trainset ({mode}): {setting}>>>>>>>>>>>>>>>>>>>>>>>>>>')
-                exp.post_train(setting)
+                exp.post_train(setting, adapter_target=args.adapter_target)
                 
                 # Testing
                 print(f'\n>>>>>>> postprocessing test with trainset ({mode}): {setting}>>>>>>>>>>>>>>>>>>>>>>>>>>')
                 # Note: We might want to save results separately for each mode
                 # The exp.test2 method prints confusion if we don't handle metrics carefully.
                 # But it calls vali_post which uses the current adapter_mode.
-                exp.test2(setting, post_process=True, vali_set=False, online=True)
+                exp.test2(setting, post_process=True, vali_set=False, online=True, adapter_target=args.adapter_target)
                 
             torch.cuda.empty_cache()
     else:
@@ -267,6 +272,6 @@ if __name__ == '__main__':
         for mode in modes_to_run:
              print(f"\nTesting Adapter Mode: {mode}")
              exp.adapter_mode = mode
-             exp.test2(setting, post_process=True, vali_set=False, online=True)
+             exp.test2(setting, post_process=True, vali_set=False, online=True, adapter_target=args.adapter_target)
              
         torch.cuda.empty_cache()

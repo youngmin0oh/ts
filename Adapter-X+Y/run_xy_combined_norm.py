@@ -19,7 +19,8 @@ if __name__ == '__main__':
     parser.add_argument('--model', type=str, required=True, default='iTransformer', help='model name')
     
     # Adapter Mode argument
-    parser.add_argument('--adapter_mode', type=str, default='all', help='Adapter mode: [add, mul, affine, all]')
+    parser.add_argument('--adapter_mode', type=str, default='all', help='Adapter mode: [add, mul, affine, all, norm]')
+    parser.add_argument('--adapter_target', type=str, default='xy', help='Adapter target: [x, y, xy]')
 
     # data loader
     parser.add_argument('--data', type=str, required=True, default='ETTh1.csv', help='dataset type')
@@ -212,11 +213,11 @@ if __name__ == '__main__':
                 
                 # Post-Training (Train Adapter)
                 print(f'\n<<<<<<< postprocessing with trainset ({mode}): {setting}>>>>>>>>>>>>>>>>>>>>>>>>>>')
-                exp.post_train(setting)
+                exp.post_train(setting, adapter_target=args.adapter_target)
                 
                 # Testing
                 print(f'\n>>>>>>> postprocessing test with trainset ({mode}): {setting}>>>>>>>>>>>>>>>>>>>>>>>>>>')
-                mse, mae = exp.test2(setting, post_process=True, vali_set=False, online=True)
+                mse, mae = exp.test2(setting, post_process=True, vali_set=False, online=True, adapter_target=args.adapter_target)
                 
             torch.cuda.empty_cache()
     else:
@@ -248,6 +249,6 @@ if __name__ == '__main__':
         for mode in modes_to_run:
              print(f"\nTesting Adapter Mode (Norm): {mode}")
              exp.adapter_mode = mode
-             mse, mae = exp.test2(setting, post_process=True, vali_set=False, online=True)
+             mse, mae = exp.test2(setting, post_process=True, vali_set=False, online=True, adapter_target=args.adapter_target)
              
         torch.cuda.empty_cache()
